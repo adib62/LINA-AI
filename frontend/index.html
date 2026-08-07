@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>JARVIS HUD - 3D PARTICLE ENGINE</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body {
+            background-color: #030712;
+            overflow: hidden;
+            font-family: 'Courier New', Courier, monospace;
+        }
+
+        /* 1. EFEK SCANNER HOLOGRAM */
+        .scan-line {
+            position: absolute;
+            top: -100%;
+            left: 0;
+            width: 100%;
+            height: 10px;
+            background: linear-gradient(to bottom, rgba(6, 182, 212, 0), rgba(6, 182, 212, 0.8), rgba(6, 182, 212, 0));
+            box-shadow: 0 0 30px 5px rgba(6, 182, 212, 0.7);
+            z-index: 50;
+            pointer-events: none;
+        }
+        @keyframes scanTrigger {
+            0% { top: -10%; }
+            100% { top: 110%; }
+        }
+        .run-scan {
+            animation: scanTrigger 1.2s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+        }
+
+        /* 2. MECHANICS SPIN ROTATION */
+        .rotate-cw { animation: spinCw 12s linear infinite; }
+        .rotate-ccw { animation: spinCcw 10s linear infinite; }
+        .rotate-slow-cw { animation: spinCw 30s linear infinite; }
+
+        @keyframes spinCw { 100% { transform: rotate(360deg); } }
+        @keyframes spinCcw { 100% { transform: rotate(-360deg); } }
+
+        /* PULSING BREATHING LAYER EFFECT */
+        @keyframes pulseScale {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.03); }
+        }
+        .hud-pulse-container {
+            animation: pulseScale 3s ease-in-out infinite;
+            transform-origin: center center;
+        }
+
+        /* ANIMASI MASUK KELUAR (NAPAS) KHUSUS RING UNGU */
+        @keyframes ringBreathing {
+            0%, 100% { transform: scale(1); opacity: 0.8; }
+            50% { transform: scale(1.08); opacity: 1; } 
+        }
+        .pulse-idle {
+            animation: ringBreathing 2s ease-in-out infinite;
+        }
+
+        /* TRANSISI SPIN PURPLE ENGINE */
+        .purple-spin-element {
+            transition: transform 1.5s cubic-bezier(0.4, 0, 0.2, 1);
+            transform-origin: center center;
+        }
+        .spin-once { transform: rotate(360deg) !important; }
+        .spin-twice { transform: rotate(720deg) !important; }
+
+        /* EFEK CAHAYA BORDER SAAT NGOMONG */
+        .listening-border-fx {
+            position: fixed;
+            inset: 0;
+            pointer-events: none;
+            z-index: 999;
+            opacity: 0;
+            transition: opacity 0.2s ease-in-out;
+            border: 4px solid rgba(0, 255, 255, 0.6);
+            background:
+                linear-gradient(to bottom, rgba(0, 255, 255, 0.35) 0%, transparent 80px),
+                linear-gradient(to top, rgba(0, 255, 255, 0.35) 0%, transparent 80px),
+                linear-gradient(to right, rgba(0, 255, 255, 0.35) 0%, transparent 80px),
+                linear-gradient(to left, rgba(0, 255, 255, 0.35) 0%, transparent 80px);
+        }
+        .listening-border-fx.active {
+            opacity: 1;
+        }
+        
+        /* SCROLLBAR CUSTOM BUAT SETTINGS */
+        ::-webkit-scrollbar { width: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: #3f3f46; border-radius: 10px; }
+    </style>
+</head>
+<body class="relative w-screen h-screen flex items-center justify-center m-0 p-0 select-none">
+
+    <div id="listening-border" class="listening-border-fx"></div>
+
+    <div id="laser-scanner" class="scan-line"></div>
+    
+    <div id="camera-container" class="absolute top-6 left-6 w-56 h-40 bg-[#09090b] border-2 border-cyan-500/50 rounded-xl overflow-hidden shadow-[0_0_15px_rgba(34,211,238,0.3)] z-[150] hidden transition-all duration-300">
+        <video id="user-video" autoplay playsinline class="w-full h-full object-cover scale-x-[-1]"></video>
+        <div class="absolute bottom-2 left-2 flex items-center gap-2">
+            <div class="w-2 h-2 rounded-full bg-red-500 animate-pulse"></div>
+            <span class="text-[10px] text-white font-mono tracking-wider drop-shadow-md">REC</span>
+        </div>
+    </div>
+
+    <div id="settings-sidebar" class="fixed top-0 right-0 w-80 h-full bg-[#09090b]/95 border-l border-[#27272a] backdrop-blur-xl transform translate-x-full transition-transform duration-500 cubic-bezier(0.4, 0, 0.2, 1) z-[200] p-6 flex flex-col gap-8 shadow-[-10px_0_30px_rgba(0,0,0,0.5)]">
+        <div class="flex justify-between items-center border-b border-[#27272a] pb-4">
+            <h2 class="text-cyan-400 font-bold tracking-widest uppercase text-sm">L.I.N.A Settings</h2>
+            <button id="btn-close-settings" class="text-gray-500 hover:text-white transition-colors">
+                <svg fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor" class="w-6 h-6"><path stroke-linecap="round" stroke-linejoin="round" d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+        </div>
+
+        <div>
+            <label class="text-[10px] text-gray-500 uppercase tracking-[0.2em] mb-3 block">Modul Suara Output</label>
+            <select id="voice-selector" class="w-full bg-[#18181b] text-gray-300 text-sm p-3 rounded-lg border border-[#27272a] outline-none focus:border-cyan-500 transition-colors cursor-pointer appearance-none">
+                <option value="46">L.I.N.A Default (Sola)</option>
+                <option value="8">Gadis Anime (Zundamon)</option>
+                <option value="3">Perempuan Dewasa (Metan)</option>
+                <option value="11">Anak Kecil Kawaii</option>
+                <option value="13">Robot / AI Sistem</option>
+            </select>
+        </div>
+    </div>
+
+    <div id="ui-idle" class="absolute inset-0 flex flex-col items-center justify-center transition-all duration-700 z-10">
+        <div class="relative w-[260px] h-[260px] flex items-center justify-center">
+            <div class="absolute scale-[0.65]">
+                <div class="relative w-[400px] h-[400px] flex items-center justify-center">
+                    <canvas id="jarvis-orb-3d" class="absolute block z-0"></canvas>
+                    <h1 class="relative text-white text-3xl font-bold tracking-[0.4em] uppercase text-cyan-400 drop-shadow-[0_0_15px_rgba(34,211,238,0.8)] z-10 pl-[0.4em]">LINA</h1>
+                </div>
+            </div>
+        </div>
+        <p id="idle-status" class="text-cyan-600/70 text-xs tracking-[0.2em] mt-4 animate-pulse uppercase relative z-10"></p>
+        <div class="text-center font-mono mt-2 tracking-widest text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.5)] relative z-10">
+            <div id="jarvis-clock" class="text-lg font-bold">00:00:00</div>
+            <div id="jarvis-date" class="text-[10px] text-cyan-500/70 uppercase mt-0.5">MINGGU, 01 JANUARI 2026</div>
+        </div>
+    </div>
+
+    <div id="ui-active" class="absolute flex flex-col items-center justify-center opacity-0 pointer-events-none transition-all duration-1000 hidden z-20">
+        <div class="relative w-[340px] h-[340px] flex items-center justify-center">
+            <div class="absolute scale-[0.65]">
+                <div class="hud-pulse-container relative w-[520px] h-[520px] flex items-center justify-center">
+                    <div id="ring-ungu-wrapper" class="absolute w-[490px] h-[490px] flex items-center justify-center">
+                        <svg id="ring-ungu" class="purple-spin-element w-full h-full text-purple-500/90" viewBox="0 0 100 100">
+                            <line x1="12" y1="12" x2="18" y2="12" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" transform="rotate(45 15 15)" />
+                            <line x1="12" y1="14.5" x2="18" y2="14.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" transform="rotate(45 15 15)" />
+                            <line x1="82" y1="12" x2="88" y2="12" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" transform="rotate(-45 85 15)" />
+                            <line x1="82" y1="14.5" x2="88" y2="14.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" transform="rotate(-45 85 15)" />
+                            <line x1="12" y1="88" x2="18" y2="88" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" transform="rotate(-45 15 85)" />
+                            <line x1="12" y1="85.5" x2="18" y2="85.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" transform="rotate(-45 15 85)" />
+                            <line x1="82" y1="88" x2="88" y2="88" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" transform="rotate(45 85 85)" />
+                            <line x1="82" y1="85.5" x2="88" y2="85.5" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" transform="rotate(45 85 85)" />
+                        </svg>
+                    </div>
+                    <div class="rotate-slow-cw absolute w-[430px] h-[430px] flex items-center justify-center">
+                        <svg class="w-full h-full text-white/90" viewBox="0 0 100 100">
+                            <g stroke="currentColor" stroke-width="1.0">
+                                <line x1="50" y1="6.5" x2="50" y2="9.5" transform="rotate(0 50 50)" />
+                                <line x1="50" y1="6.5" x2="50" y2="9.5" transform="rotate(15 50 50)" />
+                                <line x1="50" y1="6.5" x2="50" y2="9.5" transform="rotate(30 50 50)" />
+                                <line x1="50" y1="6.5" x2="50" y2="9.5" transform="rotate(45 50 50)" />
+                                <line x1="50" y1="6.5" x2="50" y2="9.5" transform="rotate(60 50 50)" />
+                                <line x1="50" y1="6.5" x2="50" y2="9.5" transform="rotate(75 50 50)" />
+                                <line x1="50" y1="6.5" x2="50" y2="9.5" transform="rotate(90 50 50)" />
+                                <line x1="50" y1="6.5" x2="50" y2="9.5" transform="rotate(105 50 50)" />
+                                <line x1="50" y1="6.5" x2="50" y2="9.5" transform="rotate(120 50 50)" />
+                                <line x1="50" y1="6.5" x2="50" y2="9.5" transform="rotate(135 50 50)" />
+                                <line x1="50" y1="6.5" x2="50" y2="9.5" transform="rotate(150 50 50)" />
+                                <line x1="50" y1="6.5" x2="50" y2="9.5" transform="rotate(165 50 50)" />
+                                <line x1="50" y1="6.5" x2="50" y2="9.5" transform="rotate(180 50 50)" />
+                                <line x1="50" y1="6.5" x2="50" y2="9.5" transform="rotate(195 50 50)" />
+                                <line x1="50" y1="6.5" x2="50" y2="9.5" transform="rotate(210 50 50)" />
+                                <line x1="50" y1="6.5" x2="50" y2="9.5" transform="rotate(225 50 50)" />
+                                <line x1="50" y1="6.5" x2="50" y2="9.5" transform="rotate(240 50 50)" />
+                                <line x1="50" y1="6.5" x2="50" y2="9.5" transform="rotate(255 50 50)" />
+                                <line x1="50" y1="6.5" x2="50" y2="9.5" transform="rotate(270 50 50)" />
+                                <line x1="50" y1="6.5" x2="50" y2="9.5" transform="rotate(285 50 50)" />
+                                <line x1="50" y1="6.5" x2="50" y2="9.5" transform="rotate(300 50 50)" />
+                                <line x1="50" y1="6.5" x2="50" y2="9.5" transform="rotate(315 50 50)" />
+                                <line x1="50" y1="6.5" x2="50" y2="9.5" transform="rotate(330 50 50)" />
+                                <line x1="50" y1="6.5" x2="50" y2="9.5" transform="rotate(345 50 50)" />
+                            </g>
+                        </svg>
+                    </div>
+                    <div class="rotate-ccw absolute w-[360px] h-[360px] flex items-center justify-center">
+                        <svg class="w-full h-full text-emerald-500 drop-shadow-[0_0_8px_rgba(16,185,129,0.5)]" viewBox="0 0 100 100">
+                            <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="2.5" stroke-dasharray="100 200" stroke-dashoffset="-75" stroke-linecap="round" />
+                        </svg>
+                    </div>
+                    <div class="rotate-cw absolute w-[310px] h-[310px] flex items-center justify-center">
+                        <svg class="w-full h-full text-rose-500 drop-shadow-[0_0_10px_rgba(244,63,94,0.6)]" viewBox="0 0 100 100">
+                            <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="3.5" stroke-dasharray="35 260" stroke-dashoffset="-195" stroke-linecap="round" />
+                        </svg>
+                    </div>
+                    <div id="ring-visualizer-core" class="absolute w-[260px] h-[260px] flex items-center justify-center transition-transform duration-75">
+                        <svg class="w-full h-full text-cyan-400 drop-shadow-[0_0_8px_rgba(34,211,238,0.5)]" viewBox="0 0 100 100">
+                            <circle cx="50" cy="50" r="46" fill="none" stroke="currentColor" stroke-width="1.8" />
+                        </svg>
+                    </div>
+                    <div class="absolute w-[210px] h-[210px] flex items-center justify-center border-4 border-white rounded-full shadow-[0_0_20px_rgba(255,255,255,0.5),inset_0_0_15px_rgba(255,255,255,0.3)]">
+                        <h2 class="text-white text-3xl font-bold tracking-[0.1em] uppercase drop-shadow-[0_0_10px_rgba(255,255,255,0.8)] pl-[0.1em]">L.I.N.A</h2>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="mt-4 text-center max-w-xl px-6 relative z-10">
+            <p id="jarvis-speech" class="text-cyan-400 font-mono text-sm tracking-wider drop-shadow-[0_0_6px_rgba(34,211,238,0.3)]">"Mempersiapkan visualisasi matriks..."</p>
+            <p id="user-command" class="text-slate-500 font-mono text-[10px] tracking-widest mt-1 uppercase italic">Mendengarkan frekuensi...</p>
+        </div>
+    </div>
+
+    <div id="lina-control-bar" class="absolute bottom-10 left-1/2 transform -translate-x-1/2 flex items-center gap-3 z-[100] opacity-0 pointer-events-none translate-y-5 transition-all duration-700">
+        
+        <button id="btn-video" class="w-[72px] h-[40px] rounded-[20px] bg-[#18181b]/90 border border-[#3f3f46] flex items-center justify-center text-gray-400 hover:bg-[#27272a] hover:text-white transition-all duration-300">
+            <svg id="icon-cam-off" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 block">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
+                <line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" class="text-red-500" />
+            </svg>
+            <svg id="icon-cam-on" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 hidden text-black">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15.75 10.5l4.72-4.72a.75.75 0 011.28.53v11.38a.75.75 0 01-1.28.53l-4.72-4.72M4.5 18.75h9a2.25 2.25 0 002.25-2.25v-9a2.25 2.25 0 00-2.25-2.25h-9A2.25 2.25 0 002.25 7.5v9a2.25 2.25 0 002.25 2.25z" />
+            </svg>
+        </button>
+
+        <button id="btn-volume" class="w-[72px] h-[40px] rounded-[20px] bg-white border border-gray-200 flex items-center justify-center text-black hover:bg-gray-200 transition-all duration-300">
+            <svg id="icon-vol-on" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 block">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+            </svg>
+            <svg id="icon-vol-off" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 hidden">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M19.114 5.636a9 9 0 010 12.728M16.463 8.288a5.25 5.25 0 010 7.424M6.75 8.25l4.72-4.72a.75.75 0 011.28.53v15.88a.75.75 0 01-1.28.53l-4.72-4.72H4.51c-.88 0-1.704-.507-1.938-1.354A9.01 9.01 0 012.25 12c0-.83.112-1.633.322-2.396C2.806 8.756 3.63 8.25 4.51 8.25H6.75z" />
+                <line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" class="text-red-500" />
+            </svg>
+        </button>
+
+        <button id="btn-mic" class="w-[72px] h-[40px] rounded-[20px] bg-[#18181b]/90 border border-[#3f3f46] flex items-center justify-center text-gray-400 hover:bg-[#27272a] hover:text-white transition-all duration-300">
+            <svg id="icon-mic-off" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 block">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+                <line x1="3" y1="3" x2="21" y2="21" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" class="text-red-500" />
+            </svg>
+            <svg id="icon-mic-on" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5 hidden text-black">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M12 18.75a6 6 0 006-6v-1.5m-6 7.5a6 6 0 01-6-6v-1.5m6 7.5v3.75m-3.75 0h7.5M12 15.75a3 3 0 01-3-3V4.5a3 3 0 116 0v8.25a3 3 0 01-3 3z" />
+            </svg>
+        </button>
+
+        <button id="btn-settings" class="w-[72px] h-[40px] rounded-[20px] bg-[#18181b]/90 border border-[#3f3f46] flex items-center justify-center text-gray-400 hover:bg-[#27272a] hover:text-cyan-400 hover:border-cyan-500/50 transition-all duration-300">
+            <svg fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="w-5 h-5">
+                <path stroke-linecap="round" stroke-linejoin="round" d="M9.594 3.94c.09-.542.56-.94 1.11-.94h2.593c.55 0 1.02.398 1.11.94l.213 1.281c.063.374.313.686.645.87.074.04.147.083.22.127.324.196.72.257 1.075.124l1.217-.456a1.125 1.125 0 011.37.49l1.296 2.247a1.125 1.125 0 01-.26 1.431l-1.003.827c-.293.24-.438.613-.431.992a6.759 6.759 0 010 .255c-.007.378.138.75.43.99l1.005.828c.424.35.534.954.26 1.43l-1.298 2.247a1.125 1.125 0 01-1.369.491l-1.217-.456c-.355-.133-.75-.072-1.076.124.072-.044.146-.087.22-.128.332-.183.582-.495.644-.869l.214-1.281z" />
+                <path stroke-linecap="round" stroke-linejoin="round" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+            </svg>
+        </button>
+    </div>
+
+    <script type="module" src="/src/main.ts"></script>
+
+</body>
+</html>
